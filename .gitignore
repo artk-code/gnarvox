@@ -1,0 +1,16 @@
+artifacts/
+.env
+.env.*
+!.env.example
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.pt
+*.safetensors
+models/
+.cache/
+target/
+node_modules/
+dist/
