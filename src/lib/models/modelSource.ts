@@ -14,6 +14,23 @@ export const DEFAULT_MODEL_SOURCE: ModelSource = {
   dtype: 'q8',
 }
 
+/**
+ * Curated Hugging Face repos known to work with the in-app engine. Any other
+ * repo id can be entered too, as long as it is a Kokoro/StyleTTS2-family ONNX
+ * export laid out like these (config.json + tokenizer + onnx/model*.onnx);
+ * pre-flight validation checks that before downloading.
+ */
+export const KNOWN_MODELS: Array<{ repoId: string; label: string }> = [
+  {
+    repoId: 'onnx-community/Kokoro-82M-v1.0-ONNX',
+    label: 'Kokoro-82M v1.0 — English, 28 voices (recommended)',
+  },
+  {
+    repoId: 'onnx-community/Kokoro-82M-ONNX',
+    label: 'Kokoro-82M v0.19 — English (older release)',
+  },
+]
+
 export const HF_HOST = 'https://huggingface.co/'
 
 /** dtype → ONNX file inside the repo's onnx/ folder (transformers.js naming). */

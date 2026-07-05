@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useStudio } from '../store'
 import { isTauri } from '../lib/tauri'
-import { DTYPE_INFO } from '../lib/models/modelSource'
+import { DTYPE_INFO, KNOWN_MODELS } from '../lib/models/modelSource'
 import {
   deleteModel,
   downloadModel,
@@ -40,6 +40,9 @@ export function EnginePanel() {
   const [status, setStatus] = useState<ModelStatus | null>(null)
   const [busy, setBusy] = useState<Busy>({ kind: 'idle' })
   const [message, setMessage] = useState<string | null>(null)
+  const [customRepo, setCustomRepo] = useState(
+    () => !KNOWN_MODELS.some((m) => m.repoId === useStudio.getState().modelSource.repoId),
+  )
 
   const refresh = useCallback(async (source: ModelSource) => {
     try {
@@ -158,14 +161,46 @@ export function EnginePanel() {
       {kokoroActive && (
         <div className="model-manager">
           <label className="field wide">
-            <span>Model repo id</span>
-            <input
-              type="text"
-              value={modelSource.repoId}
+            <span>Model</span>
+            <select
+              value={customRepo ? '__custom__' : modelSource.repoId}
               disabled={busyNow || isGenerating}
-              onChange={(e) => updateModelSource({ repoId: e.target.value })}
-            />
+              onChange={(e) => {
+                if (e.target.value === '__custom__') {
+                  setCustomRepo(true)
+                } else {
+                  setCustomRepo(false)
+                  updateModelSource({ repoId: e.target.value })
+                }
+              }}
+            >
+              {KNOWN_MODELS.map((m) => (
+                <option key={m.repoId} value={m.repoId}>
+                  {m.label}
+                </option>
+              ))}
+              <option value="__custom__">Custom Hugging Face repo id…</option>
+            </select>
           </label>
+
+          {customRepo && (
+            <label className="field wide">
+              <span>Repo id (user/model)</span>
+              <input
+                type="text"
+                placeholder="onnx-community/Kokoro-82M-v1.0-ONNX"
+                value={modelSource.repoId}
+                disabled={busyNow || isGenerating}
+                onChange={(e) => updateModelSource({ repoId: e.target.value.trim() })}
+              />
+              <span className="field-note">
+                Must be a Kokoro/StyleTTS2-family ONNX export (config.json,
+                tokenizer files, onnx/model*.onnx). The repo is checked before
+                anything downloads, so an incompatible model fails fast with a
+                clear message.
+              </span>
+            </label>
+          )}
 
           <label className="field wide">
             <span>Quality / size</span>
@@ -235,7 +270,9 @@ export function EnginePanel() {
                 <div className="progress-fill" style={{ width: `${busy.pct}%` }} />
               </div>
               <span>
-                {busy.file ? `${busy.file} — ${busy.pct}%` : 'starting download…'}
+                {busy.file
+                  ? `${busy.file} — ${busy.pct}%`
+                  : 'checking model availability…'}
               </span>
             </div>
           )}

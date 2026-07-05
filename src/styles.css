@@ -469,6 +469,11 @@ button.mini {
 
 /* Error banner */
 .error-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
   margin: 8px 0;
   padding: 10px 14px;
   border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
@@ -476,6 +481,20 @@ button.mini {
   border-radius: var(--radius);
   color: var(--danger);
   font-size: 13px;
+}
+.error-banner .error-text {
+  flex: 1 1 320px;
+  overflow-wrap: anywhere;
+}
+.error-banner .error-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.field-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
 }
 
 /* Voice engine panel */

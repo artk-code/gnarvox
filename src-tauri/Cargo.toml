@@ -1,6 +1,6 @@
 [package]
 name = "gnarvox-studio"
-version = "0.2.0"
+version = "0.3.0"
 description = "gnarvox Studio — local lesson-narration desktop app"
 authors = ["Art Kaiser"]
 license = "MIT"

@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     file \
     pkg-config \
+    libdbus-1-dev \
     libssl-dev \
     libwebkit2gtk-4.1-dev \
     libayatana-appindicator3-dev \

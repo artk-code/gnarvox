@@ -9,6 +9,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { withTimeout } from './lib/async'
 import {
   computePeak,
   computeRms,
@@ -93,11 +94,21 @@ interface StudioState {
   updateModelSource: (patch: Partial<ModelSource>) => void
   analyze: () => void
   generateAll: () => Promise<void>
+  cancelGeneration: () => void
+  clearError: () => void
   reset: () => void
 }
 
 const yieldToUi = () =>
   new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+/** How long one chunk may render before we assume the engine is wedged. */
+const CHUNK_RENDER_TIMEOUT_MS = 120_000
+/** How long loading the model into memory may take (wasm compile included). */
+const ENGINE_LOAD_TIMEOUT_MS = 180_000
+
+/** Cancellation token for the in-flight generation run, if any. */
+let activeRun: { cancelled: boolean } | null = null
 
 export const useStudio = create<StudioState>()(
   persist(
@@ -148,11 +159,15 @@ export const useStudio = create<StudioState>()(
       },
 
       generateAll: async () => {
+        if (get().isGenerating) return
         // Ensure analysis is current before generating.
         if (get().sections.length === 0) get().analyze()
         const { sections, settings, modelSource } = get()
         const chunks = flattenChunks(sections)
         if (chunks.length === 0) return
+
+        const run = { cancelled: false }
+        activeRun = run
 
         set({
           isGenerating: true,
@@ -165,124 +180,154 @@ export const useStudio = create<StudioState>()(
           ),
         })
 
-        // Resolve the active engine into a per-chunk render function.
-        let renderChunk: (
-          text: string,
-        ) => Promise<{ samples: Float32Array; sampleRate: number; seed: number }>
+        // Everything below runs inside try/finally: whatever goes wrong (or
+        // however slow the engine is), the UI always gets unlocked again.
+        try {
+          // Resolve the active engine into a per-chunk render function.
+          let renderChunk: (
+            text: string,
+          ) => Promise<{ samples: Float32Array; sampleRate: number; seed: number }>
 
-        if (settings.engineId === 'kokoro') {
-          set({ isLoadingEngine: true })
-          try {
-            const { loadKokoro, renderKokoroChunk } = await import(
-              './lib/engines/kokoro'
-            )
-            // Never downloads silently: only loads from the local model store.
-            const tts = await loadKokoro(modelSource, { allowDownload: false })
-            renderChunk = async (text) => {
-              const out = await renderKokoroChunk(tts, text, {
-                voice: settings.kokoroVoice,
-                pace: settings.pace,
-                sampleRate: SAMPLE_RATE,
+          if (settings.engineId === 'kokoro') {
+            set({ isLoadingEngine: true })
+            try {
+              const { loadKokoro, renderKokoroChunk } = await import(
+                './lib/engines/kokoro'
+              )
+              // Never downloads silently: only loads from the local model
+              // store. Bounded so a wedged load cannot freeze the app.
+              const tts = await withTimeout(
+                loadKokoro(modelSource, { allowDownload: false }),
+                ENGINE_LOAD_TIMEOUT_MS,
+                'Loading the Kokoro model',
+              )
+              renderChunk = async (text) => {
+                const out = await renderKokoroChunk(tts, text, {
+                  voice: settings.kokoroVoice,
+                  pace: settings.pace,
+                  sampleRate: SAMPLE_RATE,
+                })
+                return { ...out, seed: 0 }
+              }
+            } catch (err) {
+              set({
+                generationError:
+                  'The Kokoro model is not installed yet (or failed to load). ' +
+                  'Open the Voice engine panel to download or import it. ' +
+                  `Details: ${err instanceof Error ? err.message : String(err)}`,
               })
-              return { ...out, seed: 0 }
+              return
+            } finally {
+              set({ isLoadingEngine: false })
             }
-          } catch (err) {
-            set({
-              isGenerating: false,
-              isLoadingEngine: false,
-              generationError:
-                'The Kokoro model is not installed yet (or failed to load). ' +
-                'Open the Voice engine panel to download or import it. ' +
-                `Details: ${err instanceof Error ? err.message : String(err)}`,
-            })
-            return
+          } else {
+            renderChunk = async (text) => {
+              const rendered = renderChunkPCM(text, {
+                sampleRate: SAMPLE_RATE,
+                voiceId: settings.voiceId,
+                seed: settings.seed,
+                pace: settings.pace,
+              })
+              return {
+                samples: rendered.samples,
+                sampleRate: rendered.sampleRate,
+                seed: rendered.seedUsed,
+              }
+            }
           }
-          set({ isLoadingEngine: false })
-        } else {
-          renderChunk = async (text) => {
-            const rendered = renderChunkPCM(text, {
-              sampleRate: SAMPLE_RATE,
-              voiceId: settings.voiceId,
-              seed: settings.seed,
-              pace: settings.pace,
-            })
-            return {
+
+          const takes: Record<string, Take> = {}
+          for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i]
+            if (run.cancelled) {
+              set({ generationError: 'Generation cancelled.' })
+              return
+            }
+            set((s) => ({ status: { ...s.status, [chunk.id]: 'generating' } }))
+            await yieldToUi()
+
+            const start = performance.now()
+            let rendered: { samples: Float32Array; sampleRate: number; seed: number }
+            try {
+              rendered = await withTimeout(
+                renderChunk(chunk.text),
+                CHUNK_RENDER_TIMEOUT_MS,
+                `Rendering chunk ${i + 1}`,
+              )
+            } catch (err) {
+              set((s) => ({
+                status: { ...s.status, [chunk.id]: 'failed_retryable' },
+                generationError: `Chunk ${i + 1} failed to render: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              }))
+              return
+            }
+            const elapsedSec = (performance.now() - start) / 1000
+            const durationSec = rendered.samples.length / rendered.sampleRate
+            const peak = computePeak(rendered.samples)
+            const rms = computeRms(rendered.samples)
+            const warnings: string[] = []
+            if (peak >= 0.99) warnings.push('possible clipping')
+            if (durationSec < 0.4) warnings.push('very short chunk')
+
+            takes[chunk.id] = {
+              chunkId: chunk.id,
+              seed: rendered.seed,
               samples: rendered.samples,
               sampleRate: rendered.sampleRate,
-              seed: rendered.seedUsed,
+              durationSec,
+              rtf: durationSec > 0 ? elapsedSec / durationSec : 0,
+              peak,
+              rms,
+              warnings,
             }
-          }
-        }
 
-        const takes: Record<string, Take> = {}
-        for (let i = 0; i < chunks.length; i++) {
-          const chunk = chunks[i]
-          set((s) => ({ status: { ...s.status, [chunk.id]: 'generating' } }))
-          await yieldToUi()
-
-          const start = performance.now()
-          let rendered: { samples: Float32Array; sampleRate: number; seed: number }
-          try {
-            rendered = await renderChunk(chunk.text)
-          } catch (err) {
             set((s) => ({
-              status: { ...s.status, [chunk.id]: 'failed_retryable' },
-              isGenerating: false,
-              generationError: `Chunk ${i + 1} failed to render: ${
-                err instanceof Error ? err.message : String(err)
-              }`,
+              takes: { ...s.takes, [chunk.id]: takes[chunk.id] },
+              status: { ...s.status, [chunk.id]: 'succeeded' },
+              progress: { done: i + 1, total: chunks.length },
             }))
-            return
-          }
-          const elapsedSec = (performance.now() - start) / 1000
-          const durationSec = rendered.samples.length / rendered.sampleRate
-          const peak = computePeak(rendered.samples)
-          const rms = computeRms(rendered.samples)
-          const warnings: string[] = []
-          if (peak >= 0.99) warnings.push('possible clipping')
-          if (durationSec < 0.4) warnings.push('very short chunk')
-
-          takes[chunk.id] = {
-            chunkId: chunk.id,
-            seed: rendered.seed,
-            samples: rendered.samples,
-            sampleRate: rendered.sampleRate,
-            durationSec,
-            rtf: durationSec > 0 ? elapsedSec / durationSec : 0,
-            peak,
-            rms,
-            warnings,
           }
 
-          set((s) => ({
-            takes: { ...s.takes, [chunk.id]: takes[chunk.id] },
-            status: { ...s.status, [chunk.id]: 'succeeded' },
-            progress: { done: i + 1, total: chunks.length },
+          // Stitch with pauses, then loudness-normalize the whole lesson.
+          const segments = chunks.map((c) => ({
+            samples: takes[c.id].samples,
+            pauseMsAfter: c.pauseMsAfter,
           }))
+          const raw = stitch(segments, SAMPLE_RATE)
+          const normalized = normalizeLoudness(raw, settings.targetRms)
+          const peaks = computeWaveformPeaks(normalized, WAVEFORM_BUCKETS)
+
+          set({
+            stitched: {
+              samples: normalized,
+              sampleRate: SAMPLE_RATE,
+              peaks,
+              rms: computeRms(normalized),
+              peak: computePeak(normalized),
+              durationSec: normalized.length / SAMPLE_RATE,
+            },
+            generatedAt: new Date().toISOString(),
+          })
+        } catch (err) {
+          // Safety net for anything the paths above did not anticipate.
+          set({
+            generationError: `Generation failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          })
+        } finally {
+          if (activeRun === run) activeRun = null
+          set({ isGenerating: false, isLoadingEngine: false })
         }
-
-        // Stitch with pauses, then loudness-normalize the whole lesson.
-        const segments = chunks.map((c) => ({
-          samples: takes[c.id].samples,
-          pauseMsAfter: c.pauseMsAfter,
-        }))
-        const raw = stitch(segments, SAMPLE_RATE)
-        const normalized = normalizeLoudness(raw, settings.targetRms)
-        const peaks = computeWaveformPeaks(normalized, WAVEFORM_BUCKETS)
-
-        set({
-          stitched: {
-            samples: normalized,
-            sampleRate: SAMPLE_RATE,
-            peaks,
-            rms: computeRms(normalized),
-            peak: computePeak(normalized),
-            durationSec: normalized.length / SAMPLE_RATE,
-          },
-          isGenerating: false,
-          generatedAt: new Date().toISOString(),
-        })
       },
+
+      cancelGeneration: () => {
+        if (activeRun) activeRun.cancelled = true
+      },
+
+      clearError: () => set({ generationError: null }),
 
       reset: () =>
         set({

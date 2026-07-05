@@ -9,7 +9,7 @@ import type { Section, StudioSettings, Take } from './types'
 import { VOICES } from './engine'
 import { kokoroVoiceLabel } from './engines/kokoroVoices'
 
-export const APP_VERSION = '0.2.0'
+export const APP_VERSION = '0.3.0'
 export const ENGINE_ID = 'gnarvox-synth'
 export const ENGINE_VERSION = '0.1.0'
 

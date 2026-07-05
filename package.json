@@ -1,6 +1,6 @@
 {
   "name": "gnarvox-studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "gnarvox Studio — local lesson-narration studio (script → normalize → chunk → generate → audition → export) with a fully local neural TTS engine (Kokoro-82M) and a synthetic demo voice. No API keys, no telemetry.",
