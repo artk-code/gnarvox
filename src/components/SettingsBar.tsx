@@ -1,37 +1,56 @@
 import { useStudio } from '../store'
 import { VOICES } from '../lib/engine'
+import { KOKORO_VOICES } from '../lib/engines/kokoroVoices'
 
 export function SettingsBar() {
   const settings = useStudio((s) => s.settings)
   const updateSettings = useStudio((s) => s.updateSettings)
   const isGenerating = useStudio((s) => s.isGenerating)
 
+  const kokoro = settings.engineId === 'kokoro'
+
   return (
     <div className="settings-bar" aria-label="Voice and generation settings">
       <label className="field">
         <span>Voice</span>
-        <select
-          value={settings.voiceId}
-          disabled={isGenerating}
-          onChange={(e) => updateSettings({ voiceId: e.target.value })}
-        >
-          {VOICES.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.label}
-            </option>
-          ))}
-        </select>
+        {kokoro ? (
+          <select
+            value={settings.kokoroVoice}
+            disabled={isGenerating}
+            onChange={(e) => updateSettings({ kokoroVoice: e.target.value })}
+          >
+            {KOKORO_VOICES.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <select
+            value={settings.voiceId}
+            disabled={isGenerating}
+            onChange={(e) => updateSettings({ voiceId: e.target.value })}
+          >
+            {VOICES.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        )}
       </label>
 
-      <label className="field">
-        <span>Seed</span>
-        <input
-          type="number"
-          value={settings.seed}
-          disabled={isGenerating}
-          onChange={(e) => updateSettings({ seed: Number(e.target.value) || 0 })}
-        />
-      </label>
+      {!kokoro && (
+        <label className="field">
+          <span>Seed</span>
+          <input
+            type="number"
+            value={settings.seed}
+            disabled={isGenerating}
+            onChange={(e) => updateSettings({ seed: Number(e.target.value) || 0 })}
+          />
+        </label>
+      )}
 
       <label className="field">
         <span>Pace ×{settings.pace.toFixed(2)}</span>

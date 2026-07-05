@@ -3,6 +3,8 @@ import { chunkScript, flattenChunks, splitSentences } from './chunk'
 import type { StudioSettings } from './types'
 
 const settings: StudioSettings = {
+  engineId: 'synthetic',
+  kokoroVoice: 'af_heart',
   voiceId: 'art',
   seed: 1,
   pace: 1,

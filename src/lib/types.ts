@@ -73,8 +73,27 @@ export interface Take {
   warnings: string[]
 }
 
+/** Which voice engine renders chunks. */
+export type EngineId = 'synthetic' | 'kokoro'
+
+/** Where Kokoro model files are downloaded from. */
+export interface ModelSource {
+  /** 'huggingface' uses the official hub; 'custom' uses `customBaseUrl`. */
+  host: 'huggingface' | 'custom'
+  /** Base URL of a mirror or self-hosted file server (used when host==='custom'). */
+  customBaseUrl: string
+  /** HF-style repo id of the Kokoro ONNX model. */
+  repoId: string
+  /** Quantization / precision variant to download and run. */
+  dtype: 'q8' | 'fp16' | 'q4' | 'q4f16' | 'fp32'
+}
+
 /** Settings that drive synthesis + stitching + export. */
 export interface StudioSettings {
+  /** Active voice engine. */
+  engineId: EngineId
+  /** Kokoro voice id (e.g. "af_heart"), used when engineId === 'kokoro'. */
+  kokoroVoice: string
   /** Voice profile id (selects a deterministic synth timbre). */
   voiceId: string
   /** Base seed; combined per-chunk so each chunk is independently reproducible. */

@@ -9,8 +9,10 @@ artifacts/
 *.m4a
 *.pt
 *.safetensors
-models/
+# downloaded model weights (repo root only; src/lib/models is source code)
+/models/
 .cache/
 target/
 node_modules/
 dist/
+src-tauri/gen/schemas/

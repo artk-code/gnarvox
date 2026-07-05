@@ -1,9 +1,9 @@
 {
   "name": "gnarvox-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "gnarvox Studio — a local, offline demo of the gnarvox lesson-narration workflow (script → normalize → chunk → generate → audition → export). No API keys, no model downloads.",
+  "description": "gnarvox Studio — local lesson-narration studio (script → normalize → chunk → generate → audition → export) with a fully local neural TTS engine (Kokoro-82M) and a synthetic demo voice. No API keys, no telemetry.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -11,15 +11,22 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "tauri": "tauri"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
+    "@tauri-apps/plugin-opener": "^2.5.4",
+    "kokoro-js": "^1.2.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^4.5.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

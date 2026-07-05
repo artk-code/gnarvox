@@ -3,17 +3,7 @@ import { useStudio } from '../store'
 import { encodeWav, linearToDb } from '../lib/audio'
 import { buildManifest } from '../lib/manifest'
 import { formatDb, formatDuration } from '../lib/format'
-
-function download(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-}
+import { saveBytes } from '../lib/tauri'
 
 // ACX-style targets (PLAN §7.10): RMS -23..-18 dB, peak <= -3 dB.
 function rmsOk(linear: number): boolean {
@@ -42,9 +32,14 @@ export function ExportPanel() {
     )
   }
 
-  const exportWav = () => {
+  const exportWav = async () => {
     const buffer = encodeWav(stitched.samples, stitched.sampleRate)
-    download(new Blob([buffer], { type: 'audio/wav' }), 'gnarvox-lesson.wav')
+    await saveBytes(
+      new Uint8Array(buffer),
+      'gnarvox-lesson.wav',
+      { name: 'WAV audio', extensions: ['wav'] },
+      'audio/wav',
+    )
   }
 
   const exportManifest = async () => {
@@ -61,9 +56,11 @@ export function ExportPanel() {
         rms: stitched.rms,
         peak: stitched.peak,
       })
-      download(
-        new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }),
+      await saveBytes(
+        new TextEncoder().encode(JSON.stringify(manifest, null, 2)),
         'gnarvox-lesson.manifest.json',
+        { name: 'JSON manifest', extensions: ['json'] },
+        'application/json',
       )
     } finally {
       setBusy(false)
@@ -96,11 +93,15 @@ export function ExportPanel() {
       </p>
 
       <div className="export-actions">
-        <button className="primary" onClick={exportWav}>
-          ⬇ Download WAV
+        <button className="primary" onClick={() => void exportWav()}>
+          ⬇ Save WAV
         </button>
-        <button className="ghost" onClick={exportManifest} disabled={busy}>
-          {busy ? 'Building…' : '⬇ Download manifest.json'}
+        <button
+          className="ghost"
+          onClick={() => void exportManifest()}
+          disabled={busy}
+        >
+          {busy ? 'Building…' : '⬇ Save manifest.json'}
         </button>
       </div>
     </section>

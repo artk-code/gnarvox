@@ -1,5 +1,6 @@
 import { useStudio } from './store'
 import { SettingsBar } from './components/SettingsBar'
+import { EnginePanel } from './components/EnginePanel'
 import { ScriptPanel } from './components/ScriptPanel'
 import { NormalizationPanel } from './components/NormalizationPanel'
 import { ChunksPanel } from './components/ChunksPanel'
@@ -10,6 +11,8 @@ export default function App() {
   const generateAll = useStudio((s) => s.generateAll)
   const reset = useStudio((s) => s.reset)
   const isGenerating = useStudio((s) => s.isGenerating)
+  const isLoadingEngine = useStudio((s) => s.isLoadingEngine)
+  const generationError = useStudio((s) => s.generationError)
   const progress = useStudio((s) => s.progress)
 
   const pct =
@@ -28,7 +31,7 @@ export default function App() {
           </p>
         </div>
         <div className="header-badges">
-          <span className="pill">100% offline</span>
+          <span className="pill">100% local</span>
           <span className="pill">no API keys</span>
           <span className="pill">reproducible</span>
         </div>
@@ -42,7 +45,11 @@ export default function App() {
             onClick={() => void generateAll()}
             disabled={isGenerating}
           >
-            {isGenerating ? `Generating ${pct}%` : '⚡ Generate lesson'}
+            {isLoadingEngine
+              ? 'Loading model…'
+              : isGenerating
+                ? `Generating ${pct}%`
+                : '⚡ Generate lesson'}
           </button>
           <button className="ghost" onClick={reset} disabled={isGenerating}>
             Reset
@@ -56,8 +63,15 @@ export default function App() {
         </div>
       )}
 
+      {generationError && (
+        <div className="error-banner" role="alert">
+          ⚠ {generationError}
+        </div>
+      )}
+
       <main className="workspace">
         <div className="col col-input">
+          <EnginePanel />
           <ScriptPanel />
           <NormalizationPanel />
         </div>
@@ -72,9 +86,9 @@ export default function App() {
 
       <footer className="app-footer">
         <span>
-          gnarvox Studio — an offline demo of the design in{' '}
-          <code>docs/PLAN.md</code>. Synthetic voice engine; no human voice is
-          cloned.
+          gnarvox Studio — local lesson narration. Synthetic engine for instant
+          demos; Kokoro-82M for real speech, all on your machine. No human voice
+          is cloned.
         </span>
       </footer>
     </div>
